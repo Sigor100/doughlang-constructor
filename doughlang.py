@@ -12,50 +12,54 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix='?', description=description, intents=intents)
 
 glyphs = (
-        { "name":"Augustus", "offset":(2, 10) },
-        { "name":"Tiberius", "offset":(27, 3) },
-        { "name":"Gaius", "offset":(11, 17) },
-        { "name":"Claudius", "offset":(45, 0) },
-        { "name":"Nero", "offset":(42, 18) },
-        { "name":"Bob", "offset":(57, 15) },
-        { "name":"Otho", "offset":(0, 32) },
-        { "name":"Vitellius", "offset":(26, 27) },
-        { "name":"Hadrian", "offset":(0, 11) },
-        { "name":"Domitian", "offset":(26, 27) },
+        { "name":"Augustus", "offset":(0, 0) },
+        { "name":"Tiberius", "offset":(0, 0) },
+        { "name":"Gaius", "offset":(0, 0) },
+        { "name":"Claudius", "offset":(72, 0) },
+        { "name":"Nero", "offset":(72, 0) },
+        { "name":"Bob", "offset":(144, 0) },
+        { "name":"Otho", "offset":(0, 0) },
+        { "name":"Vitellius", "offset":(0, 0) },
+        { "name":"Hadrian", "offset":(0, 0) },
+        { "name":"Domitian", "offset":(72, 0) },
     )
 glyphmap = {}
-defglyphc = (180, 196, 104)
-defbackc = (0, 0, 0, 0)
+def_color_glyph = (180, 196, 104)
+def_color_backg = (0, 0, 0, 0)
+bitwise_to_letters = ()
 
-def makeimg(text:str, glyphc, backc):
-    blocks = text.split('/')
-    
-    text_size = [1, 0]
-    block_offset = (90,  38)
-    streak = 0
+def makeimg(blocks, color_glyph, color_backg):
+    block_count = [1, 0]
+    block_offset = (240, 100) # defined experimentally pretty much
+    padding = (10, 10)
+
+    stack_size = 0
     for b in blocks:
-        if b == "":
-            text_size[0] += 1
-            text_size[1] = max(text_size[1], streak)
-            streak = 0
+        if b == "": # double slash xxx//yyy -> "xxx", "", "yyy"  
+            block_count[0] += 1
+            block_count[1] = max(block_count[1], stack_size)
+            stack_size = 0
         else:
-            streak+=1
-    text_size[1] = max(text_size[1], streak)
+            stack_size+=1
+    block_count[1] = max(block_count[1], stack_size)
 
-    result = Image.new("RGBA", (10 + text_size[0] * block_offset[0], 30 + text_size[1] * block_offset[1]), backc)
+    result = Image.new("RGBA",
+        (padding[0] + block_count[0] * block_offset[0] + 3,
+        padding[1] + block_count[1] * block_offset[1] + 55), color_backg)
     
-    offset = [2, 0]
-    cimg = [g["img"] for g in glyphs]
-    for n in cimg:
+    colored_img = [g["img"] for g in glyphs]
+    for n in colored_img:
         pixels = n.load()
-        for i in range(n.size[0]): # for every pixel
+        for i in range(n.size[0]): # for every pixel in every image
             for j in range(n.size[1]):
-                if pixels[i,j][3] == 255:
-                    pixels[i,j] = glyphc
+                if pixels[i,j][3] == 255: # if the pixel is opaque, change it to color_glyph
+                    pixels[i,j] = color_glyph
+    
+    offset = list(padding)
     for b in blocks:
-        if b == "":
+        if b == "": # double slash xxx//yyy -> "xxx", "", "yyy" 
             offset[0] += block_offset[0]
-            offset[1] = 0
+            offset[1] = padding[0]
         else:
             for c in b:
                 glyph = glyphs[glyphmap[c]]
@@ -78,43 +82,32 @@ async def on_ready():
     print('------')
 
 @bot.command(description='makes a sentence')
-async def dl(ctx, text: str, r=defglyphc[0], g=defglyphc[1], b=defglyphc[2]):
-    await ctx.send(file=makeimg(text, (r, g, b, 255), defbackc))
+async def dl(ctx, text: str, r=def_color_glyph[0], g=def_color_glyph[1], b=def_color_glyph[2]):
+    if text == "e" or text == "E":
+        await ctx.send("https://i.kym-cdn.com/photos/images/newsfeed/001/365/818/183.jpg")
+    else:
+        await ctx.send(file=makeimg(text.split('/'), (r, g, b, 255), def_color_backg))
 
 @bot.command(description='makes a sentence asterisk syntax style')
-async def dla(ctx, text: str, r=defglyphc[0], g=defglyphc[1], b=defglyphc[2]):
+async def dla(ctx, text: str, r=def_color_glyph[0], g=def_color_glyph[1], b=def_color_glyph[2]):
     # simply convert to the other format
-    blocks = text.split(',')
-    new_text = ""
-    for b in blocks:
-        if b != "":
-            number = int(b) # yes this is bad
-            mask = 1
-            for i in range(0,8):
-                if (mask & number) != 0:
-                    new_text += glyphs[i]["name"][:1]
-                mask = mask << 1
-        new_text += "/"
-
-    await ctx.send(file=makeimg(new_text[:-1], defglyphc, defbackc))
-
-# administrative command, pls don't use in the server or I'll have to implement permissions
-@bot.command(description='really just quits. a shell script handles starting the bot again')
-async def reboot(ctx):
-    print("shutting down")
-    await bot.close()
+    blocks = ["" if b == "" else bitwise_to_letters[int(b)] for b in text.split(',')]
+    await ctx.send(file=makeimg(blocks, def_color_glyph, def_color_backg))
 
 if __name__ == "__main__":
     charset = Image.open("./charset.png")
     _, height = charset.size
     for i in range(0, len(glyphs)):
-        glyphs[i]["img"] = charset.crop((i * 36, 0, i * 36 + 36, height))
+        glyphs[i]["img"] = charset.crop((i * height, 0, i * height + height, height))
     charset = None
 
     for i in range(0, len(glyphs)):
         glyphmap[glyphs[i]["name"][:1].upper()] = i
         glyphmap[glyphs[i]["name"][:1].lower()] = i
         glyphmap[str(i + 1)] = i # yes this is dumb
+
+    with open("./lookup", "r") as f:
+        bitwise_to_letters = tuple(f.read().split("\n"))
 
     with open("./token", "r") as f:
         token = f.read()
