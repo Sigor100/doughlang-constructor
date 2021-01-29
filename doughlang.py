@@ -8,6 +8,7 @@ import json
 import numpy as np
 import hashlib
 import requests
+import time
 
 intents = discord.Intents.default()
 
@@ -19,6 +20,7 @@ glyph_map_numbers = ()
 fonts = {}
 color_pallettes = {}
 invalid_responses = ()
+default_font = ""
 
 def loadres():
     global glyph_names
@@ -27,6 +29,7 @@ def loadres():
     global fonts
     global color_pallettes
     global invalid_responses
+    global default_font
 
     with open("./config.json", "r") as f:
         obj = json.load(f)
@@ -57,6 +60,8 @@ def loadres():
         glyph_map_userinput[glyph_names[i][:1].lower()] = bits
         glyph_map_userinput[str(i + 1)] = bits
     
+    default_font = obj["default-font"]
+
     invalid_responses = tuple(obj["invalid-responses"])
 
     if obj["token"].startswith("load:"):
@@ -123,6 +128,7 @@ async def on_ready():
 
 @bot.command(description='makes a sentence')
 async def dl(ctx, text: str, font="king", color_pallette=None):
+    begin = time.time()
     blocks = []
     for b in text.split("/"):
         if b == "":
@@ -141,11 +147,13 @@ async def dl(ctx, text: str, font="king", color_pallette=None):
     arr = io.BytesIO()
     makeimg(blocks, fonts[font], pallet).save(arr, "png")
     arr.seek(0)
-    await ctx.send(file=discord.File(arr, "result.png"))
+    end = time.time()
+    await ctx.send(f"responded in {end - begin}s", file=discord.File(arr, "result.png"))
+
 
 @bot.command(description='makes a sentence asterisk syntax style')
 async def dla(ctx, text: str, font="king", color_pallette=None):
-    # simply convert to the other format
+    begin = time.time()
     blocks = []
     for b in text.split(','):
         if b == "":
@@ -171,7 +179,8 @@ async def dla(ctx, text: str, font="king", color_pallette=None):
     arr = io.BytesIO()
     makeimg(blocks, fonts[font], pallet).save(arr, "png")
     arr.seek(0)
-    await ctx.send(file=discord.File(arr, "result.png"))
+    end = time.time()
+    await ctx.send(f"responded in {end - begin}s", file=discord.File(arr, "result.png"))
 
 @bot.command(description='makes a sentence')
 async def sha(ctx, text: str):
@@ -183,15 +192,15 @@ async def sha(ctx, text: str):
             print(response_hash)
             for invalid_hash in invalid_responses:
                 if response_hash == invalid_hash:
-                    response = "BAD"
+                    response = "BAD (invalid link)"
                     break
         else:
-            response = "BAD"
+            response = "BAD (response code {})".format(response.status_code)
         
     except requests.ConnectionError:
-        response = "BAD"
+        response = "BAD (connection error)"
     
-    if response != "BAD":
+    if response is not str:
         response = "OK"
     await ctx.send("{response} {link}".format(response=response, link=link))
 
