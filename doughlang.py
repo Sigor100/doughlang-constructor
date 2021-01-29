@@ -142,7 +142,7 @@ async def dl(ctx, text: str, font="king", color_pallette=None):
     if color_pallette is not None:
         pallet = color_pallettes[color_pallette]
     else:
-        pallet = fonts[font]["default_pallet"]
+        pallet = fonts[font]["default_pallette"]
     
     arr = io.BytesIO()
     makeimg(blocks, fonts[font], pallet).save(arr, "png")
@@ -174,7 +174,7 @@ async def dla(ctx, text: str, font="king", color_pallette=None):
     if color_pallette is not None:
         pallet = color_pallettes[color_pallette]
     else:
-        pallet = fonts[font]["default_pallet"]
+        pallet = fonts[font]["default_pallette"]
     
     arr = io.BytesIO()
     makeimg(blocks, fonts[font], pallet).save(arr, "png")
@@ -189,7 +189,6 @@ async def sha(ctx, text: str):
         response = requests.get(link)
         if response.status_code == 200:
             response_hash = hashlib.sha256(response.content).hexdigest()
-            print(response_hash)
             for invalid_hash in invalid_responses:
                 if response_hash == invalid_hash:
                     response = "BAD (invalid link)"
@@ -200,7 +199,7 @@ async def sha(ctx, text: str):
     except requests.ConnectionError:
         response = "BAD (connection error)"
     
-    if response is not str:
+    if type(response) is not str:
         response = "OK"
     await ctx.send("{response} {link}".format(response=response, link=link))
 
