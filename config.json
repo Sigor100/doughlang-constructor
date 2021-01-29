@@ -1,6 +1,6 @@
 {
     "glyph-names": ["Augustus", "Tiberius", "Gaius", "Claudius", "Nero", "Bob", "Otho", "Vitellius", "Hadrian", "Domitian"],
-    "color-pallets": {
+    "color-pallettes": {
         "gray-red": { "#888888": 267648255, "#cc1111": 806093568 },
         "black-red": { "#000000": 267648255, "#ff0000": 806093568 },
         "pastel": { "#bc3a36": 267648255, "#e5877c": 806093568 },
@@ -10,14 +10,14 @@
         "pastel2": { "#bc3a36": 267648255, "#4a518a": 806093568 }
     },
     "fonts": {
-        "hr": { "source": "./fonts/hr.npy", "block-offset":[240, 100], "default-pallet": "gray-red" },
-        "king": { "source": "./fonts/KingCam.npy", "block-offset":[470, 255], "default-pallet": "black-red" },
-        "yamal": { "source": "./fonts/delta.npy", "block-offset":[530, 270], "default-pallet": "pastel" }
+        "hr": { "source": "./fonts/hr.npy", "block-offset":[240, 100], "default-pallette": "gray-red" },
+        "king": { "source": "./fonts/KingCam.npy", "block-offset":[470, 255], "default-pallette": "black-red" },
+        "yamal": { "source": "./fonts/delta.npy", "block-offset":[530, 270], "default-pallette": "pastel" }
     },
-    "default_font": "king",
+    "default-font": "king",
     "binary-lookup": "./lookup",
     "invalid-responses": [
         "d19649da26a0eb8c00d71d523d25fddc0c4a434ea3942305096c29e7eead1c79"
     ],
-    "token": ""
+    "token": "load:./token"
 }

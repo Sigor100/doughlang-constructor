@@ -17,7 +17,7 @@ glyph_names = ()
 glyph_map_userinput = {}
 glyph_map_numbers = ()
 fonts = {}
-color_pallets = {}
+color_pallettes = {}
 invalid_responses = ()
 
 def loadres():
@@ -25,7 +25,7 @@ def loadres():
     global glyph_map_userinput
     global glyph_map_numbers
     global fonts
-    global color_pallets
+    global color_pallettes
     global invalid_responses
 
     with open("./config.json", "r") as f:
@@ -33,10 +33,10 @@ def loadres():
     
     glyph_names = tuple(obj["glyph-names"])
 
-    color_pallets = {}
-    for name in obj["color-pallets"]:
-        pairs = [(resolve_color(color), obj["color-pallets"][name][color]) for color in obj["color-pallets"][name]]
-        color_pallets[name] = tuple(pairs)
+    color_pallettes = {}
+    for name in obj["color-pallettes"]:
+        pairs = [(resolve_color(color), obj["color-pallettes"][name][color]) for color in obj["color-pallettes"][name]]
+        color_pallettes[name] = tuple(pairs)
 
     fonts = {}
     for name in obj["fonts"]:
@@ -45,7 +45,7 @@ def loadres():
         with open(ldict["source"], "rb") as f:
             fonts[name]["arr"] = np.load(f)
         fonts[name]["block_offset"] = ldict["block-offset"]
-        fonts[name]["default_pallet"] = color_pallets[ldict["default-pallet"]]
+        fonts[name]["default_pallette"] = color_pallettes[ldict["default-pallette"]]
 
     with open(obj["binary-lookup"], "r") as f:
         glyph_map_numbers = tuple(f.read().split("\n"))
@@ -59,13 +59,13 @@ def loadres():
     
     invalid_responses = tuple(obj["invalid-responses"])
 
-    if obj["token"] == "":
-        print("you need to add your bot token to config.json")
-        exit()
+    if obj["token"].startswith("load:"):
+        with open(obj["token"][5:], "r") as f:
+            return f.read()
     else:
         return obj["token"]
 
-def makeimg(block_masks, font, color_pallet):
+def makeimg(block_masks, font, color_pallette):
     def draw_block(font_mask, target_pixels, offset, mask, color): # todo: implement this in c++
         for i in range(font_mask.shape[0]):
             for j in range(font_mask.shape[1]):
@@ -94,7 +94,7 @@ def makeimg(block_masks, font, color_pallet):
             block_grid_position[0] += 1
             block_grid_position[1] = 0
         else:
-            for cpass in color_pallet:
+            for cpass in color_pallette:
                 mask = char_mask & cpass[1]
                 if mask == 0:
                     continue
@@ -122,7 +122,7 @@ async def on_ready():
     print('------')
 
 @bot.command(description='makes a sentence')
-async def dl(ctx, text: str, font="king", color_pallet=None):
+async def dl(ctx, text: str, font="king", color_pallette=None):
     blocks = []
     for b in text.split("/"):
         if b == "":
@@ -133,8 +133,8 @@ async def dl(ctx, text: str, font="king", color_pallet=None):
                 mask |= glyph_map_userinput[c]
             blocks.append(mask)
 
-    if color_pallet is not None:
-        pallet = color_pallets[color_pallet]
+    if color_pallette is not None:
+        pallet = color_pallettes[color_pallette]
     else:
         pallet = fonts[font]["default_pallet"]
     
@@ -144,7 +144,7 @@ async def dl(ctx, text: str, font="king", color_pallet=None):
     await ctx.send(file=discord.File(arr, "result.png"))
 
 @bot.command(description='makes a sentence asterisk syntax style')
-async def dla(ctx, text: str, font="king", color_pallet=None):
+async def dla(ctx, text: str, font="king", color_pallette=None):
     # simply convert to the other format
     blocks = []
     for b in text.split(','):
@@ -163,8 +163,8 @@ async def dla(ctx, text: str, font="king", color_pallet=None):
                     blocks.append(bitwise_to_letters[int(b[:-2]) + 512])
             else: blocks.append(bitwise_to_letters[int(b)])
     
-    if color_pallet is not None:
-        pallet = color_pallets[color_pallet]
+    if color_pallette is not None:
+        pallet = color_pallettes[color_pallette]
     else:
         pallet = fonts[font]["default_pallet"]
     
