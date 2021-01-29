@@ -1,18 +1,15 @@
 import io
-from PIL import Image
-import PIL.ImageOps
 import os
 import discord
 from discord.ext import commands
 import json
-import numpy as np
 import hashlib
 import requests
 import time
+import sys
+from PIL import Image
+import numpy as np
 
-intents = discord.Intents.default()
-
-bot = commands.Bot(command_prefix='?', description='''This bot can write doughlang''', intents=intents)
 
 glyph_names = ()
 glyph_map_userinput = {}
@@ -21,8 +18,22 @@ fonts = {}
 color_pallettes = {}
 invalid_responses = ()
 default_font = ""
+developers = ()
+dev_mode = None
 
-def loadres():
+
+def hex_to_color(hx, a = 255):
+    if hx[:1] == "#":
+        hx = hx[1:]
+    r = int(hx[0:2], 16)
+    g = int(hx[2:4], 16)
+    b = int(hx[4:6], 16)
+    if (len(hx) > 6):
+        a = int(hx[6:8], 16)
+    return (r, g, b, a)
+
+
+def loadres(is_dev=None):
     global glyph_names
     global glyph_map_userinput
     global glyph_map_numbers
@@ -30,6 +41,8 @@ def loadres():
     global color_pallettes
     global invalid_responses
     global default_font
+    global developers
+    global dev_mode
 
     with open("./config.json", "r") as f:
         obj = json.load(f)
@@ -38,7 +51,7 @@ def loadres():
 
     color_pallettes = {}
     for name in obj["color-pallettes"]:
-        pairs = [(resolve_color(color), obj["color-pallettes"][name][color]) for color in obj["color-pallettes"][name]]
+        pairs = [(hex_to_color(color), obj["color-pallettes"][name][color]) for color in obj["color-pallettes"][name]]
         color_pallettes[name] = tuple(pairs)
 
     fonts = {}
@@ -50,25 +63,76 @@ def loadres():
         fonts[name]["block_offset"] = ldict["block-offset"]
         fonts[name]["default_pallette"] = color_pallettes[ldict["default-pallette"]]
 
-    with open(obj["binary-lookup"], "r") as f:
-        glyph_map_numbers = tuple(f.read().split("\n"))
+    
+    glyph_map_numbers = []
+    for i in range(0, 1024):
+        glyph_map_numbers.append(0)
+        for n in range(0, 10):
+            mask = 0b100000000010000000001 << n
+            if i & mask != 0:
+                glyph_map_numbers[-1] |= mask
+    glyph_map_numbers = tuple(glyph_map_numbers)
     
     glyph_map_userinput = {}
     for i in range(0, len(glyph_names)):
         bits = 0b100000000010000000001 << i
         glyph_map_userinput[glyph_names[i][:1].upper()] = bits
         glyph_map_userinput[glyph_names[i][:1].lower()] = bits
-        glyph_map_userinput[str(i + 1)] = bits
+        glyph_map_userinput[str((i + 1) % 10)] = bits
     
     default_font = obj["default-font"]
 
+    developers = tuple(obj["developers"])
+
+    # variables used to configure discord.py
+    botvars = {}
     invalid_responses = tuple(obj["invalid-responses"])
 
-    if obj["token"].startswith("load:"):
-        with open(obj["token"][5:], "r") as f:
-            return f.read()
+    if is_dev is not None:
+        dev_mode = is_dev
+        if is_dev:
+            botvars_postfix = "-dev"
+        else:
+            botvars_postfix = ""
+
+        for k in ("token", "description", "prefix"):
+            botvars[k] = obj[k+botvars_postfix]
+        
+        if botvars["token"].startswith("load:"):
+            with open(botvars["token"][5:], "r") as f:
+                botvars["token"] = f.read()
+        elif botvars["token"].startswith("getenv:"):
+            botvars["token"] = os.getenv(botvars["token"][7:])
+        return botvars
+
+
+if __name__ == "__main__":
+    global bot
+    if "--dev" in sys.argv:
+        print("starting in developer mode")
+        botvars = loadres(True)
     else:
-        return obj["token"]
+        botvars = loadres(False)
+    bot = commands.Bot(command_prefix=botvars["prefix"], description=botvars["description"], intents=discord.Intents.default())
+
+# commands
+
+@bot.event
+async def on_ready():
+    print('Logged in as')
+    print(bot.user.name)
+    print(bot.user.id)
+    print('------')
+
+
+@bot.check
+async def dev_mode_check(ctx):
+    if dev_mode and ctx.author.id not in developers:
+        ctx.send("This is the dev bot. Use the regular bot instead.")
+        return False
+    else:
+        return True
+
 
 def makeimg(block_masks, font, color_pallette):
     def draw_block(font_mask, target_pixels, offset, mask, color): # todo: implement this in c++
@@ -109,108 +173,82 @@ def makeimg(block_masks, font, color_pallette):
             block_grid_position[1] += 1
     return result
 
-def resolve_color(hx, a = 255):
-    if hx[:1] == "#":
-        hx = hx[1:]
-    r = int(hx[0:2], 16)
-    g = int(hx[2:4], 16)
-    b = int(hx[4:6], 16)
-    if (len(hx) > 6):
-        a = int(hx[6:8], 16)
-    return (r, g, b, a)
-
-@bot.event
-async def on_ready():
-    print('Logged in as')
-    print(bot.user.name)
-    print(bot.user.id)
-    print('------')
 
 @bot.command(description='makes a sentence')
-async def dl(ctx, text: str, font="king", color_pallette=None):
+async def dl(ctx, text: str, font=None, color_pallette=None):
     begin = time.time()
-    blocks = []
-    for b in text.split("/"):
-        if b == "":
-            blocks.append(0)
-        else:
-            mask = 0
-            for c in b:
-                mask |= glyph_map_userinput[c]
-            blocks.append(mask)
 
-    if color_pallette is not None:
-        pallet = color_pallettes[color_pallette]
+    if font is None:
+        font = fonts[default_font]
     else:
-        pallet = fonts[font]["default_pallette"]
-    
-    arr = io.BytesIO()
-    makeimg(blocks, fonts[font], pallet).save(arr, "png")
-    arr.seek(0)
-    end = time.time()
-    await ctx.send(f"responded in {end - begin}s", file=discord.File(arr, "result.png"))
-
-
-@bot.command(description='makes a sentence asterisk syntax style')
-async def dla(ctx, text: str, font="king", color_pallette=None):
-    begin = time.time()
-    blocks = []
-    for b in text.split(','):
-        if b == "":
-            blocks.append("")
-        else:
-            if b.endswith("//"):
-                if b.endswith("\\\\//"):
-                    blocks.append(bitwise_to_letters[int(b[:-4]) + 768])
-                else:
-                    blocks.append(bitwise_to_letters[int(b[:-2]) + 256])
-            elif b.endswith("\\\\"):
-                if b.endswith("//\\\\"):
-                    blocks.append(bitwise_to_letters[int(b[:-4]) + 768])
-                else:
-                    blocks.append(bitwise_to_letters[int(b[:-2]) + 512])
-            else: blocks.append(bitwise_to_letters[int(b)])
+        font = fonts[font]
     
     if color_pallette is not None:
-        pallet = color_pallettes[color_pallette]
+        color_pallette = color_pallettes[color_pallette]
     else:
-        pallet = fonts[font]["default_pallette"]
+        color_pallette = font["default_pallette"]
     
+    blocks = []
+    if len(text.split("/")) >= len(text.split(",")):
+        # normal mode
+        for b in text.split("/"):
+            if b == "":
+                blocks.append(0)
+            else:
+                mask = 0
+                for c in b:
+                    mask |= glyph_map_userinput[c]
+                blocks.append(mask)
+    else:
+        # asterisk encoding
+        for b in text.split(','):
+            if b == "":
+                blocks.append(0)
+            else:
+                if b.endswith("//"):
+                    if b.endswith("\\\\//"):
+                        blocks.append(glyph_map_numbers[int(b[:-4]) + 768])
+                    else:
+                        blocks.append(glyph_map_numbers[int(b[:-2]) + 256])
+                elif b.endswith("\\\\"):
+                    if b.endswith("//\\\\"):
+                        blocks.append(glyph_map_numbers[int(b[:-4]) + 768])
+                    else:
+                        blocks.append(glyph_map_numbers[int(b[:-2]) + 512])
+                else: blocks.append(glyph_map_numbers[int(b)])
+    print(blocks)
     arr = io.BytesIO()
-    makeimg(blocks, fonts[font], pallet).save(arr, "png")
+    makeimg(blocks, font, color_pallette).save(arr, "png")
     arr.seek(0)
-    end = time.time()
-    await ctx.send(f"responded in {end - begin}s", file=discord.File(arr, "result.png"))
+    await ctx.send(f"responded in {(time.time() - begin):.3}s", file=discord.File(arr, "result.png"))
 
-@bot.command(description='makes a sentence')
+
+@bot.command(description='calculates the sha256 hash of argument given')
 async def sha(ctx, text: str):
-    link = "https://doughbyte.com/art/?show={hash}".format(hash=hashlib.sha256(text.encode('utf-8')).hexdigest())
+    def get_hash(obj):
+        return hashlib.sha256(obj).hexdigest()
+    
+    link = f"https://doughbyte.com/art/?show={get_hash(text.encode('utf-8'))}"
     try:
         response = requests.get(link)
-        if response.status_code == 200:
-            response_hash = hashlib.sha256(response.content).hexdigest()
-            for invalid_hash in invalid_responses:
-                if response_hash == invalid_hash:
-                    response = "BAD (invalid link)"
-                    break
+        if response.status_code == 200 and get_hash(response.content) not in invalid_responses:
+            response = "OK"
         else:
-            response = "BAD (response code {})".format(response.status_code)
-        
+            response = "BAD {}".format(response.status_code)
     except requests.ConnectionError:
         response = "BAD (connection error)"
     
-    if type(response) is not str:
-        response = "OK"
     await ctx.send("{response} {link}".format(response=response, link=link))
 
-@bot.command(description='ping the bot')
-async def ping(ctx):
-    await ctx.send("pong")
 
-@bot.command(description='dev command')
-async def reload(ctx):
-    loadres()
-    await ctx.send("reload complete")
+@bot.command()
+async def dev(ctx, arg):
+    if dev_mode:
+        if arg == "reboot":
+            await bot.close()
+        elif arg == "reload":
+            loadres()
+
 
 if __name__ == "__main__":
-    bot.run(loadres())
+    bot.run(botvars["token"])

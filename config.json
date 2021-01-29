@@ -9,15 +9,41 @@
         "green-cyan": { "5fd192": 267648255, "70f17a": 806093568 },
         "pastel2": { "#bc3a36": 267648255, "#4a518a": 806093568 }
     },
+    "modular-colors": {
+        "black": "#000000",
+        "white": "#FFFFFF",
+        "silver": "#C0C0C0",
+        "grey": "#808080",
+        "maroon": "#800000",
+        "red": "#FF0000",
+        "purple": "#800080",
+        "fuchsia": "#FF00FF",
+        "green": "#008000",
+        "lime": "#00FF00",
+        "olive": "#808000",
+        "yellow": "#FFFF00",
+        "navy": "#000080",
+        "blue": "#0000FF",
+        "teal": "#008080",
+        "aqua": "#00FFFF"
+    },
     "fonts": {
         "hr": { "source": "./fonts/hr.npy", "block-offset":[240, 100], "default-pallette": "gray-red" },
         "king": { "source": "./fonts/KingCam.npy", "block-offset":[470, 255], "default-pallette": "black-red" },
         "yamal": { "source": "./fonts/delta.npy", "block-offset":[530, 270], "default-pallette": "pastel" }
     },
     "default-font": "king",
-    "binary-lookup": "./lookup",
     "invalid-responses": [
         "d19649da26a0eb8c00d71d523d25fddc0c4a434ea3942305096c29e7eead1c79"
     ],
-    "token": "load:./token"
+    "developers": [
+        222406424070848512
+    ],
+    "prefix": "?",
+    "prefix-dev": "!",
+    "description": "This bot can write doughlang",
+    "description-dev": "Development version of the bot that can write doughlang",
+    "token": "getenv:token",
+    "token-dev": "load:./token"
 }
+
