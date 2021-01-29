@@ -9,6 +9,8 @@ import time
 import sys
 from PIL import Image
 import numpy as np
+import aiohttp
+import asyncio
 
 
 glyph_names = ()
@@ -225,18 +227,19 @@ async def dl(ctx, text: str, font=None, color_pallette=None):
 
 @bot.command(description='calculates the sha256 hash of argument given')
 async def sha(ctx, text: str):
-    def get_hash(obj):
-        return hashlib.sha256(obj).hexdigest()
+    def get_hash(string):
+        return hashlib.sha256(string.encode('utf-8')).hexdigest()
     
-    link = f"https://doughbyte.com/art/?show={get_hash(text.encode('utf-8'))}"
-    try:
-        response = requests.get(link)
-        if response.status_code == 200 and get_hash(response.content) not in invalid_responses:
-            response = "OK"
-        else:
-            response = "BAD {}".format(response.status_code)
-    except requests.ConnectionError:
-        response = "BAD (connection error)"
+    link = f"https://doughbyte.com/art/?show={get_hash(text)}"
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(link) as response:
+            html = await response.text()
+            print(get_hash(html), html)
+            if response.status == 200 and get_hash(html) not in invalid_responses:
+                response = "OK"
+            else:
+                response = "BAD {}".format(response.status)
     
     await ctx.send("{response} {link}".format(response=response, link=link))
 
