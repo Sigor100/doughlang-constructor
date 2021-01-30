@@ -14,8 +14,7 @@ import asyncio
 
 
 glyph_names = ()
-glyph_map_userinput = {}
-glyph_map_bread = {}
+glyph_map_text = {}
 glyph_map_numbers = ()
 fonts = {}
 color_pallettes = {}
@@ -33,13 +32,12 @@ def hex_to_color(hx, a = 255):
     b = int(hx[4:6], 16)
     if (len(hx) > 6):
         a = int(hx[6:8], 16)
-    return (r, g, b, a)
+    return r + (g << 8) + (b << 16) + (a << 24)
 
 
 def loadres(is_dev=None):
     global glyph_names
-    global glyph_map_userinput
-    global glyph_map_bread
+    global glyph_map_text
     global glyph_map_numbers
     global fonts
     global color_pallettes
@@ -63,7 +61,7 @@ def loadres(is_dev=None):
         fonts[name] = {}
         ldict = obj["fonts"][name]
         with open(ldict["source"], "rb") as f:
-            fonts[name]["arr"] = np.load(f)
+            fonts[name]["arr"] = np.copy(np.swapaxes(np.load(f), 0, 1))
         fonts[name]["block_offset"] = ldict["block-offset"]
         fonts[name]["default_pallette"] = color_pallettes[ldict["default-pallette"]]
 
@@ -77,18 +75,15 @@ def loadres(is_dev=None):
                 glyph_map_numbers[-1] |= mask
     glyph_map_numbers = tuple(glyph_map_numbers)
     
-    glyph_map_userinput = {}
+    glyph_map_text = {}
     for i in range(0, len(glyph_names)):
         bits = 0b100000000010000000001 << i
-        glyph_map_userinput[glyph_names[i][:1].upper()] = bits
-        glyph_map_userinput[glyph_names[i][:1].lower()] = bits
-        glyph_map_userinput[str((i + 1) % 10)] = bits
+        glyph_map_text[glyph_names[i][:1].upper()] = bits
+        glyph_map_text[str((i + 1) % 10)] = bits
     
-    glyph_map_bread = {}
     for i in range(0, len(obj["bread-names"])):
         bits = 0b100000000010000000001 << i
-        glyph_map_bread[obj["bread-names"][i].upper()] = bits
-        glyph_map_bread[obj["bread-names"][i].lower()] = bits
+        glyph_map_text[obj["bread-names"][i].lower()] = bits
 
     default_font = obj["default-font"]
 
@@ -105,14 +100,17 @@ def loadres(is_dev=None):
         else:
             botvars_postfix = ""
 
-        for k in ("token", "description", "prefix"):
-            botvars[k] = obj[k+botvars_postfix]
+        botvars["description"]=obj["description"+botvars_postfix]
+        botvars["prefix"]=obj["prefix"+botvars_postfix]
+        token_field=obj["token"+botvars_postfix]
         
-        if botvars["token"].startswith("load:"):
-            with open(botvars["token"][5:], "r") as f:
+        if os.environ.get("token") is not None:
+            botvars["token"] = os.environ.get("token")
+        elif os.path.isfile(token_field):
+            with open(token_field, "r") as f:
                 botvars["token"] = f.read()
-        elif botvars["token"].startswith("getenv:"):
-            botvars["token"] = os.getenv(botvars["token"][7:])
+        else:
+            botvars["token"] = token_field
         return botvars
 
 
@@ -144,110 +142,122 @@ async def dev_mode_check(ctx):
         return True
 
 
-def makeimg(block_masks, font, color_pallette):
-    def draw_block(font_mask, target_pixels, offset, mask, color): # todo: implement this in c++
-        for i in range(font_mask.shape[0]):
-            for j in range(font_mask.shape[1]):
-                if mask & font_mask[i][j] != 0:
-                    target_pixels[i + offset[0], j + offset[1]] = color
-    
-    block_grid_size = [1, 0]
-    stack_size = 0
-    for b in block_masks: # calculate the horizontal and vertical size
-        if b == 0:
-            block_grid_size[0] += 1
-            block_grid_size[1] = max(block_grid_size[1], stack_size)
-            stack_size = 0
-        else:
-            stack_size+=1
-    block_grid_size[1] = max(block_grid_size[1], stack_size)
-    
-    result = Image.new("RGBA", # create the destination image
-        [font["block_offset"][i]*(block_grid_size[i]-1)+font["arr"].shape[i] for i in(0,1)],
-        (0, 0, 0, 0))
-    result_pixels = result.load()
+class DrawIterator:
+    def __init__(self, blocks, fontarr, color_pallette, canvas_size, block_size, block_offset):
+        self.blocks = blocks
+        self.fontarr = fontarr
+        self.color_pallette = color_pallette
+        self.canvas_size = canvas_size
+        self.block_size = block_size
+        self.block_offset = block_offset
+        self.up_pass = []
+        self.down_pass = []
+        self.row = 0
 
-    block_grid_position = [0, 0]
-    for char_mask in block_masks: # draw every block on the result image
-        if char_mask == 0:
-            block_grid_position[0] += 1
-            block_grid_position[1] = 0
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        if self.row == self.canvas_size[1]:
+            raise StopIteration
         else:
-            for cpass in color_pallette:
-                mask = char_mask & cpass[1]
-                if mask == 0:
-                    continue
-                draw_block(font["arr"], result_pixels,
-                [font["block_offset"][i]*block_grid_position[i] for i in(0,1)],
-                mask, cpass[0])
-            block_grid_position[1] += 1
-    return result
+            j = int(self.row / self.block_offset[1])
+            if self.row % self.block_offset[1] == self.block_size[1] - self.block_offset[1]:
+                self.up_pass = []
+                
+            elif self.row % self.block_offset[1] == 0:
+                self.up_pass = self.down_pass
+                # generate new down_pass
+                self.down_pass = []
+                for col in self.blocks:
+                    if len(col) > j:
+                        npass = []
+                        for _, cmask in self.color_pallette:
+                            mask = cmask & col[j]
+                            if mask != 0:
+                                npass.append(mask)
+                        if len(npass) > 0:
+                            self.down_pass.append(npass)
+                    else:
+                        self.down_pass.append([])
+            
+            buffer = np.zeros(self.canvas_size[0], np.uint32)
+            passes = self.down_pass
+            for passes in ((self.down_pass, 0), (self.up_pass, self.block_offset[1])):
+                for i in range(len(passes[0])): # i is the current column
+                    for mask in passes[0][i]:
+                        startx = i*self.block_offset[0]
+                        endx = startx + self.fontarr.shape[1]
+                        buffer[startx:endx] |= self.fontarr[(self.row % self.block_offset[1]) + passes[1]] & mask
+            
+            result = np.zeros(buffer.size, dtype=np.uint32)
+            for color, mask in self.color_pallette:
+                temp = (buffer & mask)
+                temp[temp!=0] = color
+                result |= temp
+
+            self.row+=1
+            return result
 
 
 @bot.command(description='makes a sentence')
 async def dl(ctx, text: str, font=None, color_pallette=None):
     begin = time.time()
 
+    # chose font and color pallette
     if font is None:
         font = fonts[default_font]
     else:
         font = fonts[font]
-    
     if color_pallette is not None:
         color_pallette = color_pallettes[color_pallette]
     else:
         color_pallette = font["default_pallette"]
     
-    blocks = []
-    bread_split = text.split(" ")
-    bread_len = len(bread_split) - 1
-    for i in range(len(bread_split)):
-        bread_split[i] = bread_split[i].split("-")
-        bread_len += len(bread_split[i])
-    norm_split = text.split("/")
-    alt_split = text.split(",")
-    print(bread_split, bread_len, len(norm_split), len(alt_split))
-
-    if bread_len >= max(len(norm_split), len(alt_split)):
-        # bread mode
-        for col in bread_split:
-            for b in col:
-                mask = 0
-                for g in b:
-                    mask |= glyph_map_bread[g]
-                blocks.append(mask)
-            blocks.append(0)
-
-    elif len(norm_split) >= len(bread_split):
-        # normal mode
-        for b in norm_split:
-            if b == "":
-                blocks.append(0)
-            else:
-                mask = 0
-                for g in b:
-                    mask |= glyph_map_userinput[g]
-                blocks.append(mask)
-    else:
+    print(len(glyph_map_numbers))
+    if "," in text:
         # asterisk encoding
-        for b in bread_split:
-            if b == "":
-                blocks.append(0)
+        blocks = [[]]
+        for blk in text.split(","):
+            if blk == "":
+                blocks.append([])
             else:
-                if b.endswith("//"):
-                    if b.endswith("\\\\//"):
-                        blocks.append(glyph_map_numbers[int(b[:-4]) + 768])
-                    else:
-                        blocks.append(glyph_map_numbers[int(b[:-2]) + 256])
-                elif b.endswith("\\\\"):
-                    if b.endswith("//\\\\"):
-                        blocks.append(glyph_map_numbers[int(b[:-4]) + 768])
-                    else:
-                        blocks.append(glyph_map_numbers[int(b[:-2]) + 512])
-                else: blocks.append(glyph_map_numbers[int(b)])
-    print(blocks)
+                modif = 0
+                newl = len(blk)
+                if blk.endswith("//"):
+                    modif += 256
+                    newl = -2
+                    if blk.endswith("\\\\//"):
+                        modif += 512
+                        newl = -4
+                elif blk.endswith("\\"):
+                    modif += 512
+                    newl = -2
+                    if blk.endswith("//\\\\"):
+                        modif += 256
+                        newl = -4
+                print(modif)
+                blocks[-1].append(glyph_map_numbers[int(blk[:newl]) + modif])
+    else:
+        blocks = []
+        text = text.replace("//", " ")
+        text = text.replace("/", "-")
+        for column in text.split(" "):
+            blocks.append([])
+            for blk in column.split("-"):
+                charmask = 0
+                for g in blk:
+                    charmask |= glyph_map_text[g]
+                blocks[-1].append(charmask)
+    
+    grid_dimensions = (len(blocks), max([len(i) for i in blocks]))
+    
+    real_shape = [font["arr"].shape[(i+1)%2] for i in (0,1)]
+    img_size = [font["block_offset"][i] * (grid_dimensions[i] - 1) + real_shape[i] for i in (0,1)]
+
+    row_iterator = DrawIterator(blocks, font["arr"], color_pallette, img_size, real_shape, font["block_offset"])
     arr = io.BytesIO()
-    makeimg(blocks, font, color_pallette).save(arr, "png")
+    Image.fromarray(np.vstack(tuple(row_iterator)), "RGBA").save(arr, "png")
     arr.seek(0)
     await ctx.send(f"responded in {(time.time() - begin):.3}s", file=discord.File(arr, "result.png"))
 
@@ -262,19 +272,18 @@ async def sha(ctx, text: str):
     async with aiohttp.ClientSession() as session:
         async with session.get(link) as response:
             html = await response.text()
-            print(get_hash(html), html)
             if response.status == 200 and get_hash(html) not in invalid_responses:
                 response = "OK"
             else:
-                response = "BAD {}".format(response.status)
+                response = f"BAD {response.status}"
     
-    await ctx.send("{response} {link}".format(response=response, link=link))
+    await ctx.send(f"{response} {link}")
 
 
 @bot.command()
 async def dev(ctx, arg):
-    if dev_mode:
-        if arg == "reboot":
+    if ctx.author.id in developers:
+        if arg == "shutdown":
             await bot.close()
         elif arg == "reload":
             loadres()

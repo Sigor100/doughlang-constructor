@@ -44,7 +44,7 @@
     "prefix-dev": "!",
     "description": "This bot can write doughlang",
     "description-dev": "Development version of the bot that can write doughlang",
-    "token": "getenv:token",
-    "token-dev": "load:./token"
+    "token": "",
+    "token-dev": "./token"
 }
 
