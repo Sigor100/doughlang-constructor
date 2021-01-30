@@ -15,6 +15,7 @@ import asyncio
 
 glyph_names = ()
 glyph_map_userinput = {}
+glyph_map_bread = {}
 glyph_map_numbers = ()
 fonts = {}
 color_pallettes = {}
@@ -38,6 +39,7 @@ def hex_to_color(hx, a = 255):
 def loadres(is_dev=None):
     global glyph_names
     global glyph_map_userinput
+    global glyph_map_bread
     global glyph_map_numbers
     global fonts
     global color_pallettes
@@ -82,6 +84,12 @@ def loadres(is_dev=None):
         glyph_map_userinput[glyph_names[i][:1].lower()] = bits
         glyph_map_userinput[str((i + 1) % 10)] = bits
     
+    glyph_map_bread = {}
+    for i in range(0, len(obj["bread-names"])):
+        bits = 0b100000000010000000001 << i
+        glyph_map_bread[obj["bread-names"][i].upper()] = bits
+        glyph_map_bread[obj["bread-names"][i].lower()] = bits
+
     default_font = obj["default-font"]
 
     developers = tuple(obj["developers"])
@@ -191,19 +199,38 @@ async def dl(ctx, text: str, font=None, color_pallette=None):
         color_pallette = font["default_pallette"]
     
     blocks = []
-    if len(text.split("/")) >= len(text.split(",")):
+    bread_split = text.split(" ")
+    bread_len = len(bread_split) - 1
+    for i in range(len(bread_split)):
+        bread_split[i] = bread_split[i].split("-")
+        bread_len += len(bread_split[i])
+    norm_split = text.split("/")
+    alt_split = text.split(",")
+    print(bread_split, bread_len, len(norm_split), len(alt_split))
+
+    if bread_len >= max(len(norm_split), len(alt_split)):
+        # bread mode
+        for col in bread_split:
+            for b in col:
+                mask = 0
+                for g in b:
+                    mask |= glyph_map_bread[g]
+                blocks.append(mask)
+            blocks.append(0)
+
+    elif len(norm_split) >= len(bread_split):
         # normal mode
-        for b in text.split("/"):
+        for b in norm_split:
             if b == "":
                 blocks.append(0)
             else:
                 mask = 0
-                for c in b:
-                    mask |= glyph_map_userinput[c]
+                for g in b:
+                    mask |= glyph_map_userinput[g]
                 blocks.append(mask)
     else:
         # asterisk encoding
-        for b in text.split(','):
+        for b in bread_split:
             if b == "":
                 blocks.append(0)
             else:

@@ -1,5 +1,6 @@
 {
     "glyph-names": ["Augustus", "Tiberius", "Gaius", "Claudius", "Nero", "Bob", "Otho", "Vitellius", "Hadrian", "Domitian"],
+    "bread-names": "ntqlmfwe+.",
     "color-pallettes": {
         "gray-red": { "#888888": 267648255, "#cc1111": 806093568 },
         "black-red": { "#000000": 267648255, "#ff0000": 806093568 },
