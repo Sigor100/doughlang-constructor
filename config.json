@@ -1,15 +1,5 @@
 {
-    "glyph-names": ["Augustus", "Tiberius", "Gaius", "Claudius", "Nero", "Bob", "Otho", "Vitellius", "Hadrian", "Domitian"],
-    "bread-names": "ntqlmfwe+.",
-    "color-pallettes": {
-        "gray-red": { "#888888": 267648255, "#cc1111": 806093568 },
-        "black-red": { "#000000": 267648255, "#ff0000": 806093568 },
-        "pastel": { "#bc3a36": 267648255, "#e5877c": 806093568 },
-        "regen": { "#FFFFFF": 0, "#ED1C24": 1049601, "#FF7F27": 2099202, "#FFF200": 4198404, "#22B14C": 8396808, "#00A2E8": 16793616, "#FFAEC9": 33587232, "#FFC90E": 67174464, "#EFE4B0": 134348928, "#B5E61D": 268697856, "#99D9EA": 537395712 },
-        "blue-light": { "1565f0": 267648255, "1ddce6": 806093568 },
-        "green-cyan": { "5fd192": 267648255, "70f17a": 806093568 },
-        "pastel2": { "#bc3a36": 267648255, "#4a518a": 806093568 }
-    },
+    "glyph-mapping": ["ntqlmfwe+.", "ATGCNBOVHD", "1234567890"],
     "modular-colors": {
         "black": "#000000",
         "white": "#FFFFFF",
@@ -28,13 +18,18 @@
         "teal": "#008080",
         "aqua": "#00FFFF"
     },
+    "color-pallettes": {
+        "pastel": { "#bc3a36": 267648255, "#e5877c": 806093568 },
+        "regen": { "#FFFFFF": 0, "#ED1C24": 1049601, "#FF7F27": 2099202, "#FFF200": 4198404, "#22B14C": 8396808, "#00A2E8": 16793616, "#FFAEC9": 33587232, "#FFC90E": 67174464, "#EFE4B0": 134348928, "#B5E61D": 268697856, "#99D9EA": 537395712 },
+        "pastel2": { "#bc3a36": 267648255, "#4a518a": 806093568 }
+    },
     "fonts": {
-        "hr": { "source": "./fonts/hr.npy", "block-offset":[240, 100], "default-pallette": "gray-red" },
+        "hr": { "source": "./fonts/hr.npy", "block-offset":[240, 100], "default-pallette": "grey-red" },
         "king": { "source": "./fonts/KingCam.npy", "block-offset":[470, 255], "default-pallette": "black-red" },
         "yamal": { "source": "./fonts/delta.npy", "block-offset":[530, 270], "default-pallette": "pastel" }
     },
-    "default-font": "king",
-    "invalid-responses": [
+    "default-font": "hr",
+    "invalid-sha-responses": [
         "d19649da26a0eb8c00d71d523d25fddc0c4a434ea3942305096c29e7eead1c79"
     ],
     "developers": [
