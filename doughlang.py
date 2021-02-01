@@ -225,7 +225,7 @@ async def sha(ctx, text: str):
     async with aiohttp.ClientSession() as session:
         async with session.get(link) as response:
             html = await response.text()
-            if response.status == 200 and get_hash(html) not in invalid_responses:
+            if response.status == 200 and get_hash(html) not in invalid_sha_responses:
                 response = "OK"
             else:
                 response = f"BAD {response.status}"
