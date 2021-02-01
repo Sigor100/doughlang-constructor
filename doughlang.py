@@ -14,7 +14,6 @@ import asyncio
 
 
 glyph_map = {}
-glyph_map_asterisk = ()
 modular_colors = {}
 color_pallettes = {}
 fonts = {}
@@ -41,9 +40,26 @@ def resolve_pallette(name):
         return ((modular_colors[name], 0x3fffffff),)
     return None
 
+def draw_block(buffer, block_arr, block_offset, block, color_pallette, offset):
+
+    # Slice of image buffer that will be modified
+    buffer_slice = buffer[offset[1]:(offset[1] + block_arr.shape[0]),
+                          offset[0]:(offset[0] + block_arr.shape[1])];
+    
+    # Iterate all colors
+    for color, mask in color_pallette:
+        # background mask. True for background, False for already drawn
+        background = buffer_slice == 0
+        
+        toDraw = ((block_arr
+                   * background # Draw only on background
+                   & block      # draw specified symbols only
+                   & mask       # draw color pallette's symbols only
+                   ) != 0).astype(np.uint32)
+        buffer_slice += toDraw * color
+
 def loadres(is_dev=None):
     global glyph_map
-    global glyph_map_asterisk
     global modular_colors
     global color_pallettes
     global fonts
@@ -61,7 +77,6 @@ def loadres(is_dev=None):
             bits = 0b100000000010000000001 << i
             glyph_map[mapping[i]] = bits
 
-    glyph_map_asterisk = tuple(i * 0b100000000010000000001 for i in range(1024))
 
     modular_colors = {}
     for name in obj["modular-colors"]:
@@ -123,62 +138,6 @@ async def on_ready():
 async def dev_mode_check(ctx):
     return not dev_mode or ctx.author.id in developers
 
-
-class DrawIterator:
-    def __init__(self, blocks, fontarr, color_pallette, canvas_size, block_offset):
-        self.blocks = blocks
-        self.fontarr = fontarr
-        self.color_pallette = color_pallette
-        self.canvas_size = canvas_size
-        self.block_offset = block_offset
-        self.up_pass = []
-        self.down_pass = []
-        self.row = 0
-
-    def __iter__(self):
-        return self
-    
-    def __next__(self):
-        if self.row == self.canvas_size[1]: # reached the bottom of the image
-            raise StopIteration
-        else:
-            j = int(self.row / self.block_offset[1]) # 
-            if self.row % self.block_offset[1] == self.fontarr.shape[0] - self.block_offset[1]:
-                self.up_pass = []
-                
-            elif self.row % self.block_offset[1] == 0:
-                self.up_pass = self.down_pass
-                # generate new down_pass
-                self.down_pass = []
-                for col in self.blocks:
-                    if len(col) > j:
-                        new_pass = []
-                        for _, cmask in self.color_pallette:
-                            mask = cmask & col[j]
-                            if mask:
-                                new_pass.append(mask)
-                        if new_pass:
-                            self.down_pass.append(new_pass)
-                    else:
-                        self.down_pass.append([])
-            
-            buffer = np.zeros(self.canvas_size[0], np.uint32)
-            passes = self.down_pass
-            for passes in ((self.down_pass, 0), (self.up_pass, self.block_offset[1])):
-                for i in range(len(passes[0])): # i is the current column
-                    for mask in passes[0][i]:
-                        startx = i*self.block_offset[0]
-                        endx = startx + self.fontarr.shape[1]
-                        buffer[startx:endx] |= self.fontarr[(self.row % self.block_offset[1]) + passes[1]] & mask
-            
-            result = np.zeros(buffer.size, dtype=np.uint32)
-            for color, mask in self.color_pallette:
-                result[((buffer & mask)!=0)&(result==0)] = color
-
-            self.row+=1
-            return result
-
-
 @bot.command(description='makes a sentence')
 async def dl(ctx, text: str, font=None, color_pallette=None):
     begin = time.time()
@@ -213,21 +172,15 @@ async def dl(ctx, text: str, font=None, color_pallette=None):
             if blk == "":
                 blocks.append([])
             else:
+                blk_num_length = len([x.isdigit() for x in blk])
+                blk_num = int(blk[:blk_num_length])
+                blk_mod = blk[blk_num:]
                 modif = 0
-                newl = len(blk)
-                if blk.endswith(r"//"):
-                    modif += 256
-                    newl = -2
-                    if blk.endswith(r"\\//"):
-                        modif += 512
-                        newl = -4
-                elif blk.endswith(r"\\"):
-                    modif += 512
-                    newl = -2
-                    if blk.endswith(r"//\\"):
-                        modif += 256
-                        newl = -4
-                blocks[-1].append(glyph_map_asterisk[int(blk[:newl]) + modif])
+                if "//" in blk_mod:
+                    modif |= 256
+                if "\\\\" in blk_mod:
+                    modif |= 512
+                blocks[-1].append((blk_num | modif) * 0b100000000010000000001)
     else:
         blocks = []
         text = text.replace("//", " ")
@@ -242,12 +195,23 @@ async def dl(ctx, text: str, font=None, color_pallette=None):
     
     grid_dimensions = (len(blocks), max([len(i) for i in blocks]))
     
-    img_size = [font["block_offset"][i] * (grid_dimensions[i] - 1) + font["arr"].shape[(i+1)%2] for i in (0,1)]
-
-    row_iterator = DrawIterator(blocks, font["arr"], color_pallette, img_size, font["block_offset"])
+    block_offset = font["block_offset"]
+    block_arr = font["arr"]
+    img_size = [block_offset[i] * (grid_dimensions[i] - 1) + block_arr.shape[(i+1)%2] for i in (0,1)]
+    
+    # Allocate image buffer to draw on
+    buffer = np.zeros(img_size[::-1], dtype=np.uint32);
+    
+    # Draw each block, column-by-column
+    for column in range(len(blocks)):
+        for row in range(len(blocks[column])):
+            draw_block(buffer, block_arr, block_offset, blocks[column][row], color_pallette,
+                       (column * block_offset[0], row * block_offset[1]))
+    
     arr = io.BytesIO()
-    Image.fromarray(np.vstack(tuple(row_iterator)), "RGBA").save(arr, "png")
+    Image.fromarray(buffer, "RGBA").save(arr, "png")
     arr.seek(0)
+    
     await ctx.send(f"responded in {(time.time() - begin):.3}s", file=discord.File(arr, "result.png"))
 
 
