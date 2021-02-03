@@ -35,11 +35,9 @@
     "developers": [
         222406424070848512
     ],
+    "website-check-delay": 300,
     "prefix": "?",
-    "prefix-dev": "!",
-    "description": "This bot can write doughlang",
-    "description-dev": "Development version of the bot that can write doughlang",
-    "token": "",
-    "token-dev": "./token"
+    "update-channel": 397866475597201408,
+    "token": ""
 }
 
