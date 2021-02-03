@@ -77,6 +77,7 @@ def load_config():
     new_config["developers"] = tuple(obj["developers"])
     new_config["website_check_delay"] = obj["website-check-delay"]
     new_config["prefix"] = obj["prefix"]
+    new_config["update_channel"] = obj["update-channel"]
     
     g_config = new_config
 
