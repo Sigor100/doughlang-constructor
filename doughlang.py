@@ -35,7 +35,7 @@ def resolve_pallette(name, config=None):
     elif len(name.split("-")) == 2:
         c1, c2 = name.split("-")
         if c1 in modular_colors and c2 in modular_colors:
-            return ((modular_colors[c2], 0x300c0300), (modular_colors[c1], 0xff3fcff))
+            return ((modular_colors[c1], 0xff3fcff), (modular_colors[c2], 0x300c0300))
     elif name in modular_colors:
         return ((modular_colors[name], 0x3fffffff),)
     return None
@@ -60,7 +60,7 @@ def load_config():
     
     new_config["color_pallettes"] = {}
     for name in obj["color-pallettes"]:
-        new_config["color_pallettes"][name] = tuple((hex_to_color(color_key), obj["color-pallettes"][name][color_key]) for color_key in obj["color-pallettes"][name])[::-1]
+        new_config["color_pallettes"][name] = tuple([(hex_to_color(color_hex), mask) for color_hex, mask in obj["color-pallettes"][name]])
 
     fonts = {}
     for name in obj["fonts"]:
